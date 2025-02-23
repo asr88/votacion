@@ -11,8 +11,13 @@ class VistaVerificador(Resource):
     def __init__(self):
         # Lista de URLs donde está desplegado el servicio de procesar ventas
         self.endpoints = [
-            "http://localhost:5000/procesar_venta"
+            "http://localhost:5000/procesar_venta",
+            "http://localhost:5001/procesar_venta",
+            "http://localhost:5002/procesar_venta"
         ]
+        # Verificar que el número de endpoints sea impar
+        if len(self.endpoints) % 2 == 0:
+            raise ValueError("El número de endpoints debe ser impar")
 
     def hacer_peticion(self, url: str, datos: Dict) -> Dict:
         """Realiza una petición individual y maneja posibles errores"""
@@ -44,24 +49,48 @@ class VistaVerificador(Resource):
                 'resultados_diferentes': []
             }
 
-        # Extraer los totales de venta para comparar
+        # Extraer los totales de venta y contar frecuencias
         totales = [r['resultado']['total_venta'] for r in resultados_exitosos]
-        primer_total = totales[0]
+        frecuencias = {}
+        for r in resultados_exitosos:
+            total = r['resultado']['total_venta']
+            frecuencias[total] = frecuencias.get(total, 0) + 1
+
+        # Si hay un solo valor, todos son iguales
+        if len(frecuencias) == 1:
+            return {
+                'consistente': True,
+                'mensaje': "Todos los resultados son consistentes",
+                'resultados_diferentes': []
+            }
+
+        # Si hay más de un valor diferente
+        if len(frecuencias) == len(resultados_exitosos):
+            return {
+                'consistente': False,
+                'mensaje': "Todos los resultados son diferentes entre sí",
+                'resultados_diferentes': [
+                    {'url': r['url'], 'total': r['resultado']['total_venta']}
+                    for r in resultados_exitosos
+                ]
+            }
+
+        # Encontrar el valor minoritario (el diferente)
+        valor_mayoritario = max(frecuencias.items(), key=lambda x: x[1])[0]
         
-        # Verificar si todos los resultados son iguales
+        # Identificar los resultados diferentes (los que no son mayoritarios)
         resultados_diferentes = [
             {
                 'url': r['url'],
                 'total': r['resultado']['total_venta']
             }
             for r in resultados_exitosos
-            if r['resultado']['total_venta'] != primer_total
+            if r['resultado']['total_venta'] != valor_mayoritario
         ]
 
         return {
-            'consistente': len(resultados_diferentes) == 0,
-            'mensaje': "Todos los resultados son consistentes" if len(resultados_diferentes) == 0 
-                      else "Se encontraron diferencias en los resultados",
+            'consistente': False,
+            'mensaje': "Se encontraron diferencias en los resultados",
             'resultados_diferentes': resultados_diferentes
         }
 
